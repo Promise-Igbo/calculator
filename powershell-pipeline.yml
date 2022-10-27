@@ -1,0 +1,30 @@
+#Zipped artifact path - get the path from Azure DevOps Pipeline variables
+$path = "D:\a\r1\a/Halobiz.ConsoleJobber/halobiz-webjob/a.zip"
+
+#Test the path if exists
+if (-not (Test-Path $path))
+{
+throw [System.IO.FileNotFoundException] "$($path) not found."
+}
+#Resource type and details
+$resourceType = "Microsoft.Web/sites/config"
+$resourceName = "$($env:webAppName)/publishingcredentials"
+#Get the Publishing Profile details
+$publishingCredentials = Invoke-AzureRmResourceAction -ResourceGroupName $($env:ResourceGroupName) -ResourceType $resourceType -ResourceName $resourceName -Action list -Force
+#Creating the Auth Token using user name and password from Publish profile credentials
+$base64AuthInfo = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes(("{0}:{1}" -f $publishingCredentials.Properties.PublishingUserName,$publishingCredentials.Properties.PublishingPassword)))
+#Get the file from the Build Artifacts path
+$files = Get-ChildItem -Path $path -Recurse
+Test-Path -Path $files[0]
+#Authentication Header
+$authHeader = " Basic " + $base64AuthInfo
+#Kudu Zip Deploy API URL
+$deployUrl = "$($env:scmApiUrl)/zip/site/wwwroot/App_Data/jobs/$($env:scheduleName)/$($env:webJobName)/"
+#Invoke Kudu Zip Deploy API to deploy the WebJob
+$contentType = "multipart/form-data"
+$userAgent = "powershell/1.0"
+$ZipHeaders = @{
+Authorization = $authHeader
+}
+$response = Invoke-RestMethod -Uri ([System.Uri]::new($deployUrl)) -Headers $ZipHeaders -UserAgent $userAgent -Method PUT -InFile $files[0] -ContentType $contentType
+Write-Host "Deployment Successful"
